@@ -1,0 +1,18 @@
+{
+    "source_dir": "/path/to/source",
+    "backup_dir": "/path/to/backup",
+    "pre_backup_script": "/path/to/pre_backup_script.sh",
+    "post_backup_script": "/path/to/post_backup_script.sh",
+    "yandex_token": "your_yandex_token",
+    "yandex_folder": "/backups",
+    "google_creds_file": "/path/to/google_creds.json",
+    "google_folder_path": "/backups",
+    "schedule": {
+        "time": "04:00",
+        "cron": "0 3 * * *"
+    },
+    "encryption": {
+        "enabled": true,
+        "key_file": "encryption_key.key"
+    }
+}

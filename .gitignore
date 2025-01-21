@@ -1,0 +1,5 @@
+.idea
+.venv
+config.json
+encryption_key.key
+backup.log
