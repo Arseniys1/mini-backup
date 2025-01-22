@@ -2,7 +2,7 @@ import os
 import shutil
 import subprocess
 import json
-from datetime import datetime, timedelta  # Добавлен импорт timedelta
+from datetime import datetime, timedelta
 import schedule
 import time
 from cryptography.fernet import Fernet
@@ -209,13 +209,53 @@ def start_scheduler(config):
         schedule.run_pending()
         time.sleep(1)
 
+# Функция для получения списка бэкапов с сервера
+def list_backups(server_url, username, password):
+    try:
+        response = requests.get(
+            f"{server_url}/list",
+            auth=HTTPBasicAuth(username, password),
+            verify=False  # Отключение проверки SSL (для самоподписанных сертификатов)
+        )
+        if response.status_code == 200:
+            return response.json().get("backups", [])
+        else:
+            logging.error(f"Ошибка при получении списка бэкапов: {response.json().get('error')}")
+            return []
+    except Exception as e:
+        logging.error(f"Ошибка при подключении к серверу: {e}")
+        return []
+
+# Функция для скачивания бэкапа с сервера
+def download_backup(server_url, username, password, backup_name, download_dir="downloads"):
+    try:
+        os.makedirs(download_dir, exist_ok=True)  # Создаем директорию для загрузок, если ее нет
+        response = requests.get(
+            f"{server_url}/download/{backup_name}",
+            auth=HTTPBasicAuth(username, password),
+            verify=False  # Отключение проверки SSL
+        )
+        if response.status_code == 200:
+            file_path = os.path.join(download_dir, backup_name)
+            with open(file_path, "wb") as f:
+                f.write(response.content)
+            logging.info(f"Бэкап {backup_name} успешно скачан в {file_path}")
+            return file_path
+        else:
+            logging.error(f"Ошибка при скачивании бэкапа: {response.json().get('error')}")
+            return None
+    except Exception as e:
+        logging.error(f"Ошибка при скачивании бэкапа: {e}")
+        return None
+
 # Минимальный shell-интерфейс
 def shell_interface(config):
     while True:
         print("\n1. Создать бэкап")
         print("2. Расшифровать бэкап")
         print("3. Сгенерировать SSL-сертификаты")
-        print("4. Выйти")
+        print("4. Скачать бэкап с сервера")
+        print("5. Выйти")
         choice = input("Выберите действие: ")
 
         if choice == "1":
@@ -231,6 +271,28 @@ def shell_interface(config):
             generate_ssl_certificates(cert_file, key_file)
             print(f"Сертификат и ключ созданы: {cert_file}, {key_file}")
         elif choice == "4":
+            if 'server_url' in config and 'username' in config and 'password' in config:
+                # Получаем список бэкапов с сервера
+                backups = list_backups(config['server_url'], config['username'], config['password'])
+                if backups:
+                    print("\nДоступные бэкапы на сервере:")
+                    for i, backup in enumerate(backups, 1):
+                        print(f"{i}. {backup}")
+                    backup_choice = input("Введите номер бэкапа для скачивания: ")
+                    try:
+                        backup_choice = int(backup_choice) - 1
+                        if 0 <= backup_choice < len(backups):
+                            backup_name = backups[backup_choice]
+                            download_backup(config['server_url'], config['username'], config['password'], backup_name)
+                        else:
+                            print("Неверный выбор.")
+                    except ValueError:
+                        print("Введите корректный номер.")
+                else:
+                    print("На сервере нет доступных бэкапов.")
+            else:
+                print("Не указаны данные для подключения к серверу в конфигурации.")
+        elif choice == "5":
             break
         else:
             print("Неверный выбор. Попробуйте снова.")
