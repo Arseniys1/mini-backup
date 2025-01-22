@@ -3,3 +3,6 @@
 config.json
 encryption_key.key
 backup.log
+server.log
+server.crt
+server.key
