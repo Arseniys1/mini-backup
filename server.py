@@ -1,11 +1,12 @@
+from datetime import datetime
 import os
 import shutil
 import logging
 from fastapi import FastAPI, HTTPException, UploadFile, File, Depends, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.responses import FileResponse, JSONResponse
-from datetime import datetime
 import secrets
+import json
 
 # Настройка логирования
 logging.basicConfig(
@@ -19,35 +20,56 @@ logging.basicConfig(
 
 app = FastAPI()
 
+# Загрузка конфигурации из файла
+def load_config(config_file: str) -> dict:
+    try:
+        with open(config_file, "r") as f:
+            config = json.load(f)
+        logging.info(f"Конфигурация загружена из файла: {config_file}")
+        return config
+    except Exception as e:
+        logging.error(f"Ошибка при загрузке конфигурации: {e}")
+        raise
+
+# Загрузка конфигурации
+CONFIG = load_config("server-config.json")
+
 # Конфигурация сервера
-SERVER_BACKUP_DIR = "server_backups"
+SERVER_BACKUP_DIR = CONFIG.get("server_backup_dir", "server_backups")
 os.makedirs(SERVER_BACKUP_DIR, exist_ok=True)
+
+# База данных пользователей
+USERS = CONFIG.get("users", {"admin": "admin_password"})
+
+# Шаблон имени файла
+BACKUP_NAME_FORMAT = CONFIG.get("backup_name_format", "backup_{timestamp}_{username}.zip")
 
 # Базовая аутентификация
 security = HTTPBasic()
 
-# База данных пользователей (в реальной системе используйте базу данных)
-USERS = {
-    "admin": "admin_password"  # Пароль в открытом виде (для примера)
-}
-
 # Проверка аутентификации
 def authenticate(credentials: HTTPBasicCredentials = Depends(security)):
-    correct_username = secrets.compare_digest(credentials.username, "admin")
-    correct_password = secrets.compare_digest(credentials.password, USERS["admin"])
-    if not (correct_username and correct_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-    return credentials.username
+    username = credentials.username
+    password = credentials.password
+    if username in USERS and secrets.compare_digest(password, USERS[username]):
+        return username
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Incorrect username or password",
+        headers={"WWW-Authenticate": "Basic"},
+    )
+
+# Формирование имени файла с разделителями
+def generate_backup_name(username: str) -> str:
+    # Формат даты и времени с разделителями
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")  # Добавлены дефисы и подчеркивания
+    return BACKUP_NAME_FORMAT.format(timestamp=timestamp, username=username)
 
 # Загрузка бэкапа на сервер
 @app.post("/upload")
 async def upload_backup(file: UploadFile = File(...), username: str = Depends(authenticate)):
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-    backup_path = os.path.join(SERVER_BACKUP_DIR, f"backup_{timestamp}.zip")
+    backup_name = generate_backup_name(username)  # Генерация имени файла
+    backup_path = os.path.join(SERVER_BACKUP_DIR, backup_name)
     with open(backup_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
     logging.info(f"Бэкап {file.filename} загружен на сервер как {backup_path}")
