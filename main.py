@@ -1,5 +1,4 @@
 import os
-import shutil
 import subprocess
 import json
 from datetime import datetime, timedelta
@@ -8,7 +7,6 @@ import time
 from cryptography.fernet import Fernet
 import argparse
 import logging
-import sys
 import requests
 from requests.auth import HTTPBasicAuth
 from cryptography import x509
@@ -16,6 +14,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 from cryptography.hazmat.backends import default_backend
+import zipfile
 
 # Настройка логирования
 def setup_logging():
@@ -77,17 +76,29 @@ def run_script(script_path):
         result = subprocess.run(script_path, shell=True)
         if result.returncode != 0:
             logging.error(f"Скрипт {script_path} завершился с ошибкой (код возврата: {result.returncode}). Бэкап отменен.")
-            sys.exit(1)  # Прерываем выполнение программы
+            return False  # Возвращаем False вместо завершения программы
+        return True  # Возвращаем True, если скрипт выполнен успешно
+    return True  # Если скрипт не указан, считаем, что все в порядке
 
-# Создание бэкапа
+# Создание бэкапа с максимальным сжатием
 def create_backup(source_dir, backup_dir):
     if not os.path.exists(backup_dir):
         os.makedirs(backup_dir)
         logging.info(f"Создана директория для бэкапов: {backup_dir}")
+
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
     backup_file = os.path.join(backup_dir, f"backup_{timestamp}.zip")
-    shutil.make_archive(backup_file[:-4], 'zip', source_dir)
-    logging.info(f"Создан бэкап: {backup_file}")
+
+    # Создание ZIP-архива с максимальным сжатием
+    with zipfile.ZipFile(backup_file, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zipf:
+        for root, dirs, files in os.walk(source_dir):
+            for file in files:
+                file_path = os.path.join(root, file)
+                arcname = os.path.relpath(file_path, start=source_dir)  # Относительный путь в архиве
+                zipf.write(file_path, arcname=arcname)
+                logging.info(f"Добавлен файл в архив: {file_path}")
+
+    logging.info(f"Создан бэкап с максимальным сжатием: {backup_file}")
     return backup_file
 
 # Загрузка на собственный сервер
@@ -158,7 +169,9 @@ def perform_backup(config):
     logging.info("Начало выполнения бэкапа")
     try:
         # Выполнение пред-бэкап скрипта
-        run_script(config.get('pre_backup_script'))
+        if not run_script(config.get('pre_backup_script')):
+            logging.error("Пред-бэкап скрипт завершился с ошибкой. Бэкап отменен.")
+            return  # Отменяем бэкап, если скрипт завершился с ошибкой
 
         # Создание бэкапа
         backup_file = create_backup(config['source_dir'], config['backup_dir'])
@@ -180,7 +193,9 @@ def perform_backup(config):
             logging.info(f"Локальный архив {backup_file} удален.")
 
         # Выполнение пост-бэкап скрипта
-        run_script(config.get('post_backup_script'))
+        if not run_script(config.get('post_backup_script')):
+            logging.error("Пост-бэкап скрипт завершился с ошибкой. Бэкап завершен с предупреждениями.")
+            return  # Отменяем бэкап, если скрипт завершился с ошибкой
 
         logging.info("Бэкап успешно завершен")
     except Exception as e:
