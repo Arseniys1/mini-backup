@@ -1,0 +1,16 @@
+{
+  "source_dir": "C:\\UTM\\transporter",
+  "backup_dir": "./backups_temp",
+  "encryption": {
+    "enabled": false,
+    "key_file": "encryption_key.key"
+  },
+  "server_url": "https://localhost",
+  "username": "admin",
+  "password": "admin_password",
+  "schedule": {
+    "time": "04:00"
+  },
+  "pre_backup_script": "call scripts/.venv/Scripts/activate && python scripts/before.py \"C:\\UTM\\jre\\bin\\javaw.exe\" && deactivate",
+  "post_backup_script": "call scripts/.venv/Scripts/activate && python scripts/after.py \"C:\\UTM\\agent\\bin\\agent.bat\" && deactivate"
+}

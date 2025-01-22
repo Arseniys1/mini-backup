@@ -1,0 +1,7 @@
+{
+  "server_backup_dir": "server_backups",
+  "users": {
+    "admin": "admin_password"
+  },
+  "backup_name_format": "backup_{timestamp}_{username}.zip"
+}
