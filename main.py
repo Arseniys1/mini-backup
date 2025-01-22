@@ -15,6 +15,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 from cryptography.hazmat.backends import default_backend
 import zipfile
+import time  # Для работы с Unix timestamp
 
 # Настройка логирования
 def setup_logging():
@@ -102,11 +103,14 @@ def create_backup(source_dir, backup_dir):
     return backup_file
 
 # Загрузка на собственный сервер
-def upload_to_server(file_path, server_url, username, password):
+def upload_to_server(file_path, server_url, username, password, client_timestamp=None):
     with open(file_path, 'rb') as f:
+        files = {"file": f}
+        data = {"client_timestamp": client_timestamp} if client_timestamp else None
         response = requests.post(
             f"{server_url}/upload",
-            files={"file": f},
+            files=files,
+            data=data,
             auth=HTTPBasicAuth(username, password),
             verify=False  # Отключение проверки SSL (для самоподписанных сертификатов)
         )
@@ -185,7 +189,8 @@ def perform_backup(config):
 
         # Загрузка на собственный сервер
         if 'server_url' in config and 'username' in config and 'password' in config:
-            upload_to_server(backup_file, config['server_url'], config['username'], config['password'])
+            client_timestamp = int(time.time())  # Генерация Unix timestamp
+            upload_to_server(backup_file, config['server_url'], config['username'], config['password'], client_timestamp)
 
         # Удаление локального архива после успешной загрузки
         if os.path.exists(backup_file):

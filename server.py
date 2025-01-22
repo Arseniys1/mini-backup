@@ -2,11 +2,12 @@ from datetime import datetime
 import os
 import shutil
 import logging
-from fastapi import FastAPI, HTTPException, UploadFile, File, Depends, status
+from fastapi import FastAPI, HTTPException, UploadFile, File, Depends, status, Form
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.responses import FileResponse, JSONResponse
 import secrets
 import json
+from typing import Optional
 
 # Настройка логирования
 logging.basicConfig(
@@ -60,15 +61,30 @@ def authenticate(credentials: HTTPBasicCredentials = Depends(security)):
     )
 
 # Формирование имени файла с разделителями
-def generate_backup_name(username: str) -> str:
-    # Формат даты и времени с разделителями
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")  # Добавлены дефисы и подчеркивания
+def generate_backup_name(username: str, client_timestamp: Optional[int] = None) -> str:
+    # Если клиент передал timestamp, используем его. Иначе — текущее время сервера.
+    try:
+        timestamp = (
+            datetime.fromtimestamp(client_timestamp).strftime("%Y-%m-%d_%H-%M-%S")
+            if client_timestamp
+            else datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        )
+    except (ValueError, OSError) as e:
+        logging.error(f"Некорректный Unix timestamp: {client_timestamp}. Ошибка: {e}")
+        raise HTTPException(
+            status_code=400,
+            detail="Некорректный Unix timestamp. Убедитесь, что передано корректное количество секунд."
+        )
     return BACKUP_NAME_FORMAT.format(timestamp=timestamp, username=username)
 
 # Загрузка бэкапа на сервер
 @app.post("/upload")
-async def upload_backup(file: UploadFile = File(...), username: str = Depends(authenticate)):
-    backup_name = generate_backup_name(username)  # Генерация имени файла
+async def upload_backup(
+    file: UploadFile = File(...),
+    username: str = Depends(authenticate),
+    client_timestamp: Optional[int] = Form(default=None),  # Передаем Unix timestamp из формы
+):
+    backup_name = generate_backup_name(username, client_timestamp)  # Генерация имени файла
     backup_path = os.path.join(SERVER_BACKUP_DIR, backup_name)
     with open(backup_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
