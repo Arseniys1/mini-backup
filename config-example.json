@@ -10,5 +10,7 @@
   "password": "admin_password",
   "schedule": {
     "time": "23:00"
-  }
+  },
+  "pre_backup_script": "",
+  "post_backup_script": ""
 }
